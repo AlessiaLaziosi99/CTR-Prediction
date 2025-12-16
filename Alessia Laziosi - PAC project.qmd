@@ -1,0 +1,313 @@
+---
+title: "PAC project"
+author: "Alessia Laziosi"
+format: html
+editor: visual
+execute:
+  eval: false
+  warning: false
+  message: false
+  error: false
+  echo: true
+---
+
+## Introduction
+
+This report summarizes the analysis performed on a dataset containing 4,000 observations. The objective was to develop a regression model to predict the click-through rate (CTR), defined as the percentage of visitors who click on a given advertisement intended to drive traffic. The primary goal was to minimize the Root Mean Squared Error (RMSE) of the predictions. The approach followed a data analysis process involved thorough data cleaning, exploratory data analysis,variable selection, and the application of different modeling techniques. Throughout the modeling phase, multiple strategies were tested to improve the RMSE while carefully monitoring and attempting to mitigate the risk of overfitting.
+
+## Data Preparation and initial data exploration
+
+### Loading and Overview of Data
+
+There were two different data sets to be loaded:
+
+-   analysis_data is the "train" set, containing 4000 observations of 29 variables.
+
+-   scoring_data is the "test" set, containing 1000 observations of 28 variables.
+
+```{r}
+setwd("C:\\Users\\huawei\\Desktop\\APAN FRAMEWORK\\my_PAC_project\\Data")
+getwd()       
+list.files()  
+analysis_data <- read.csv("analysis_data.csv", stringsAsFactors = FALSE)
+scoring_data  <- read.csv("scoring_data.csv", stringsAsFactors = FALSE)
+```
+
+### Initial Overview of Data
+
+I utilized the skimr package to summarize data.
+
+```{r}
+library(skimr)
+skim(analysis_data)
+```
+
+I identified 8 categorical and 21 numerical predictors, with numerous missing values that needed to be imputed before proceeding:
+
+-   Six variables had 237 missing values each
+
+-   Twelve variables had 197 missing values each.
+
+CTR was a continuous variable. CTR, as well as the variables id, ad_frequency, and seasonality, had no missing data.
+
+I also observed a pattern in the missingness, suggesting that the data were missing not completely at random.
+
+### Impute missing values
+
+To address missing values, several imputation strategies were tested:
+
+1.Median imputation was used for numerical variables and mode imputation for categorical variables. I used this method for most of my predictions due to its simplicity;
+
+2.MICE imputation was used for numerical variables after confirming that missingness was less than 20%. For categorical variables, missing values were replaced with 'unknown'. I tried this technique for a polynomial regression model as an attempt to use a more sophisticated method; I also used it for a random forest, but compared to the simplest technique, the random forest performed better.
+
+3.Vtreat was used for my best submission according to the public score (0.07523). It is tipically used for XGBoost models. With this technique, missing values are automatically imputed without any loss of information.
+
+### Initial Data Exploration
+
+After imputing missing values, exploratory analysis of variables was conducted.I observed that the target variable, CTR, had a skewed distribution. For this reason, I tried transforming CTR into log(CTR), which improved the results for the linear regression model. However, for random forest and XGBoost, the results were worse, coming to the conclusion that just in the linear regression a variable transformation can generate an upgrade in this context.
+
+Additionally, several predictors appeared to have a polynomial rather than a linear relationship with CTR:
+
+-   targeting_score
+
+-   visual_appeal
+
+-   cta_strength
+
+-   headline_lenght
+
+### Correlation and Multicollinearity Check
+
+Then, I checked the correlation matrix among numeric variables and visualized it with a heatmap. It was clear that the strongest predictor for CTR was visual_appeal, always present in my models.
+
+I also checked the VIF to assess whether there were multicollinearity issues, but found none.
+
+## Data processing
+
+Feature engineering steps included aligning categorical levels between the two datasets to ensure consistency when comparing categorical predictors and creating dummy variables for categorical predictors. This was automatically done by vtreat in case of my best model, which code is provided below.
+
+As the variables had different ranges, I considered whether it was better to standardize them. After standardizing the variables, I consistently improved the linear regression model. I concluded that standardization is important for linear regression, while other models, such as regression trees, random forest, and XGBoost, do not require it.
+
+## Variables selection
+
+As learned during the lesson, theory is important when it comes to selecting variables. I went through an article on Internet, and I found that headline, type of device utilized are important predictors. I kept that in mind for my analysis.
+
+On top of that, to select the most appropriate set of predictors, multiple feature selection techniques were explored.
+
+The simplest was filtering. Indeed, I calculated the correlations and kept the most important six predictors for CTR and with this method, I obtained the best prediction according to Kaggle.
+
+The method I used most in my models was stepwise regression, applied using the stepAIC() function from the MASS package:
+
+-   Forward selection, backward elimination, and both-direction stepwise selection were performed based on the Akaike Information Criterion (AIC).
+
+-   In addition, selection based on the Bayesian Information Criterion (BIC) was conducted by adjusting the penalty term (`k = log(n)`).
+
+-   To complement this approach, subset selection was conducted using the `regsubsets()` function from the `leaps` package.\
+    This method evaluated all possible models up to ten variables, comparing models based on Mallows' Cp and adjusted R² statistics.
+
+Finally, results from the stepwise and subset selection procedures were compared. Models were assessed based on AIC, BIC, Mallows' Cp, and adjusted R², and the final model (based on BIC) was chosen by balancing predictive accuracy with model simplicity. In the end, the variables selected with these method were:
+
+-   targeting_score\
+    visual_appeal\
+    headline_length\
+    cta_strength\
+    ad_format.Video\
+    location.Northeast\
+    time_of_day.Morning\
+
+As can be seen, headline_length and also the format of the ad appeared in the selected variables, as suggested by my researches.
+
+## Modeling and Analysis
+
+When it came to modeling, I followed a general strategy:
+
+-   Used RMSE from the LM model with just the intercept as my first benchmark
+
+-   Tried several regression models that we learned
+
+-   Tuning hyperparameters
+
+-   Set up a cross validation
+
+-   Optimize RMSE
+
+My initial strategy did not take feature selection into account. I learned from my mistakes how important this step is; indeed, when I included feature selection in my models, I made significant progress.
+
+Kaggle recognized as the best model an XGBoost model tuned with variable selection by filtering the most important predictors, according to their correlation with CTR. However, my best model, according to public private score, is an XGBoost model tuned without variables selection. I come to conclusion that this model worked better without variables selection in my experience; and this is in generally how XGBoost works, it automatically selects the important variables. However, to strengthen this conclusion, further testing with alternative feature selection strategies would have been beneficial.
+
+## Models explored
+
+Initially, I started with a simple linear regression model, following the initial approach to regression proposed during the course, to establish a performance benchmark.\
+Subsequently, I experimented with more complex models, including
+
+-   Multiple linear regression: The best result I obtained was when I transformed polynomial variables, reaching a public score of 0.09988 (private score: 0.08325), compared to the initial simple linear model with just the intercept as predictor (public score: 0.18014, private score: 0.0222954). I learned how important it is to examine the distribution of the variables. I also ran Lasso and Ridge regressions, but the improvement was minimal, so I focused on regression trees.
+
+-   Regression trees and tuned regression trees: I improved the results with tuned regression trees, reaching a public score of 0.08768 on the leaderboard (private score: 0.10427). Still, my model was overfitting because the RMSE on the train set was much lower than that on the test set; the difference between the public and private scores also reflected this. I incorporated CV techniques to ensure more stable results and I tried other models.
+
+-   Random forest, random forest tuned: I did a big step ahead with selecting variables according to the BIC method that I explained above: I learned how important is to select important features, reaching on the leaderboard public score of 0.07521. Still, my model had overfitting problems (I got an RMSE on the train set equal to 0.04116892 and in the holdout set equal to 0.1632433), so I came back analyzing the methods to impute missing values, and also exploring variables distributions.
+
+-   and XGBoost. In the early stages, I did not perform any variable selection and evaluated the models using all available features. However, after encountering a plateau in performance improvements, I revisited the theoretical background and implemented a simple feature selection strategy. I analyzed again the correlations between the predictors and the target variable (CTR), selecting the six most highly correlated variables (in absolute terms) and this is the best model selected by Kaggle:
+
+    +------------------+----------------------------+
+    | Predictor        | Correlation value with CTR |
+    +==================+============================+
+    | ```              | ```                        |
+    | visual_appeal    | 0.537941160                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    | targeting_score  | 0.325348336                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    |  cta_strength    | 0.162673409                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    | headline_length  | 0.126800982                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    | ad_formatVideo   | 0.111566336                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    | ad_formatText    | 0.109721898                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+    | ```              | ```                        |
+    | body_text_length | 0.084341053                |
+    | ```              | ```                        |
+    +------------------+----------------------------+
+
+-   Tuning a simple random forest model already provided improvements compared to the earlier, untuned XGBoost model, highlighting the importance of careful tuning hyperparameters.
+
+-   After refining the feature set, I proceeded to tune the hyperparameters of the XGBoost model, which further improved predictive performance, anyway even if I tried in many ways to prevent overfitting, still, my model was overfitting:
+
+    RMSE TRAIN
+
+    ```         
+    0.05530341 
+    ```
+
+    RMSE TEST
+
+    ```         
+    0.1555509 
+    ```
+
+-   In the end, my best model, according to the private and public score is an XGBoost model, without feature selection, with imputed missing values using vtreat, tuned with hyperparameters that can be seen in the code chunk. The hyperparameter ranges selected for tuning were based on typical best practices for XGBoost models.\
+    The hyperparameters used for tuning were chosen based on standard recommendations for XGBoost.\
+    I set the learning rate (eta) to 0.1 to balance training speed and model stability.\
+    The tree depth (max_depth = 4) was chosen to avoid overfitting due to overly complex trees.\
+    Subsampling parameters (subsample = 0.6 and colsample_bytree = 0.6) were used to introduce randomness and improve generalization.\
+    These settings were evaluated using cross-validation to identify the optimal number of boosting rounds. This tuning process helped optimize the model while reducing the risk of overfitting. I obtained the following RMSE:
+
+    RMSE Train 0.07596
+
+    RMSE Test 0.07214
+
+Looking at the RMSE, this model is more equilibrated than the one selected by Kaggle, demonstrating a almost null overfitting. Observing also the public and private score, I come to the conclusion that this XGBoost model is the best model I performed.
+
+## Conclusions
+
+This experience taught me several key lessons:
+
+-   Careful **feature selection** could significantly improve model performance, but it is important to try different feature selection methods, and don't be strict to one.
+
+-   Careful about preventing **overfitting**. I utilized CV techniques, and hyperparameters, but I believe that I had to go further with this to prevent overfitting.
+
+-   **Model tuning** (hyperparameter optimization) is critical: tuned models consistently outperformed non-tuned models. When it comes to XGBoost model, it is more difficult to find the right hyperparameter, more experience in my case in needed, but finding the optimal rounds, was important to prevent overfitting.
+
+-   There is no "one-size-fits-all" method; different techniques must be tested and validated based on the specific context and data characteristics.
+
+-   Revisiting "**theoretical knowledge"** help ensure that selected variables made sense and resonated with domain understanding.
+
+-   Overall, this iterative approach of modeling, diagnosing, feature engineering, and tuning proved crucial for achieving my best results.
+
+## Best model according to public score
+
+```{r}
+# Load necessary packages
+library(caret)
+library(vtreat)
+library(xgboost)
+
+# Set working directory and load data
+setwd("C:\\Users\\huawei\\Desktop\\APANFRAMEWORK\\my_PAC_project\\Data")
+analysis_data <- read.csv("analysis_data.csv", stringsAsFactors = FALSE)
+scoring_data  <- read.csv("scoring_data.csv", stringsAsFactors = FALSE)
+
+# Save a copy of original data
+analysis_data_original <- analysis_data
+
+# Split data into train and test sets
+set.seed(1031)
+train_index <- createDataPartition(analysis_data$CTR, p = 0.7, list = FALSE, groups = 200)
+train_data <- analysis_data[train_index, ]
+test_data <- analysis_data[-train_index, ]
+
+# Data preprocessing using vtreat
+treatment_plan <- designTreatmentsZ(dframe = train_data, 
+                                    varlist = setdiff(names(train_data), c("id", "CTR")))
+newvars <- treatment_plan$scoreFrame[treatment_plan$scoreFrame$code %in% c('clean', 'lev'), 'varName']
+train_input <- prepare(treatmentplan = treatment_plan, dframe = train_data, varRestriction = newvars)
+test_input <- prepare(treatmentplan = treatment_plan, dframe = test_data, varRestriction = newvars)
+
+#Applyed Cross Validation for my XGBoost model, with hyperparameters chosen as explained in this report
+cv <- xgb.cv(
+  data = as.matrix(train_input), 
+  label = train_data$CTR,
+  nrounds = 10000,
+  eta = 0.1,
+  max_depth = 4,
+  min_child_weight = 3,
+  subsample = 0.6,
+  colsample_bytree = 0.6,
+  lambda = 1,
+  alpha = 1,
+  early_stopping_rounds = 100,
+  nfold = 5,
+  metrics = 'rmse',
+  verbose = 0
+)
+
+# Train final XGBoost model using best number of rounds, to prevent overfitting
+optimal_nrounds <- cv$best_iteration
+xgboost_model <- xgboost(
+  data = as.matrix(train_input),
+  label = train_data$CTR,
+  nrounds = optimal_nrounds,
+  eta = 0.1,
+  max_depth = 4,
+  min_child_weight = 3,
+  subsample = 0.6,
+  colsample_bytree = 0.6,
+  lambda = 1,
+  alpha = 1,
+  verbose = 0
+)
+
+# Predictions and RMSE on training set
+pred_train <- predict(xgboost_model, newdata = as.matrix(train_input))
+rmse_train <- sqrt(mean((pred_train - train_data$CTR)^2))
+print(paste("Train RMSE:", rmse_train))
+
+# Predictions and RMSE on test set
+pred_test <- predict(xgboost_model, newdata = as.matrix(test_input))
+rmse_test <- sqrt(mean((pred_test - test_data$CTR)^2))
+print(paste("Test RMSE:", rmse_test))
+
+# Final RMSE from cross-validation
+final_rmse_cv <- cv$evaluation_log[cv$best_iteration, "test_rmse_mean"]
+print(paste("Final RMSE from CV:", final_rmse_cv))
+
+# Feature importance plot 
+importance <- xgb.importance(feature_names = colnames(train_input), model = xgboost_model)
+xgb.plot.importance(importance_matrix = importance)
+
+```
+
+## References
+
+Schaller, T. (n.d.). *What is click-through rate (CTR) and why it matters*. Retrieved from <https://strikesocial.com/blog/click-through-rate/> SEO Business. (n.d.).
