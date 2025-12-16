@@ -167,7 +167,7 @@ XGBoost parameters:
 ## Connect
 
 **LinkedIn:** [linkedin.com/in/alessialaziosi](https://www.linkedin.com/in/alessialaziosi/)  
-**Email:** alessia.laziosi@columbia.edu
+**Email:** al4840@columbia.edu
 
 ---
 
